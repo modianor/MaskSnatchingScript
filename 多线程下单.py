@@ -4,9 +4,9 @@ import os
 import random
 import threading  # Python主要通过标准库中的threading包来实现多线程
 import time
+from typing import Dict, List
 
 import requests
-import schedule
 
 from constant import PARAMS_MASK
 
@@ -32,7 +32,7 @@ header = {
     'Host': 'xcxb.aiyichuan.com',
     'Connection': 'keep-alive',
     'accept': 'application/json',
-    'cookie': 'session_key=88fcff2cc94fb5e8e4a619366eaade5c;version=2;fenxiaoid=72458;beta=0;lat=34.00525;lng=119.38845;',
+    'cookie': 'session_key=cf3ae4384b395557997080997d4070e9;version=2;fenxiaoid=72458;beta=0;lat=34.00545;lng=119.38945;',
     'charset': 'utf-8',
     'content-type': 'application/x-www-form-urlencoded',
     'Content-Length': '0',
@@ -45,7 +45,11 @@ i = 1  # 限购数量
 
 lock = threading.Lock()  # 创建锁
 
+url = 'https://xcxb.aiyichuan.com/wxapp/v1.Act/index?scene=1089'
+act_info_url = 'https://xcxb.aiyichuan.com/wxapp/v1.Act/act_info'  # GET
 order_url = 'https://xcxb.aiyichuan.com/wxapp/v1.Act/add_order'  # POST
+
+shop_id, mask_id, mask_name = 653, 0, ''
 
 session = requests.session()
 
@@ -79,22 +83,61 @@ def booth(tid):
 
 
 def buy_something():
-    # 总共设置了10个线程
-    for k in range(5):
-        new_thread = threading.Thread(target=booth, args=(k,))  # 创建线程; Python使用threading.Thread对象来代表线程
-        new_thread.start()  # 调用start()方法启动线程
+    global shop_id, mask_id, mask_name, url, act_info_url
+    response = session.get(url=url, headers=header)
+
+    data: Dict = response.json()
+
+    data = data['data']
+
+    user_data = data['userinfo']
+
+    data: List = data['forech_template']
+
+    mask_data = data[1]
+
+    mask_list_data = mask_data['ad_list'][0]['new_link']
+
+    shop_id = 653  # 653 the shop id is default value --  653
+    mask_id = mask_list_data['params']['id']
+    mask_name = mask_list_data['link_name']  # default value
+
+    print('shop id: {}, mask id: {}, mask name: {}'.format(shop_id, mask_id, str(mask_name)))
+
+    if '一次性防护口罩5只装' in mask_name:
+        act_info_url = act_info_url + '?fid=' + str(mask_id) + '&share_uid=&coupon_uid='
+        response = session.get(url=act_info_url, headers=header)
+        data = response.json()
+        for i, shop in enumerate(data['data']['get_all_price']['attr']):
+            print('{}, 库存：{}, 显示库存：{}, 价格：{}, 限购：{}'.format(shop['name'], shop['kucun'], shop['show_kucun'],
+                                                            shop['show_price'], shop['xiangou_num']))
+            if '唐闸' in shop['name']:
+                shop_id = shop['id']
+
+                # 总共设置了10个线程
+                for k in range(5):
+                    new_thread = threading.Thread(target=booth, args=(k,))  # 创建线程; Python使用threading.Thread对象来代表线程
+                    new_thread.start()  # 调用start()方法启动线程
 
 
 if __name__ == '__main__':
-
-    print('===================开启定时任务===================')
-
-    schedule.every().day.at('11:30').do(buy_something)  # 11:30 准时开抢
-    schedule.every().day.at('14:00').do(buy_something)  # 14:00 准时开抢
-    schedule.every().day.at('16:00').do(buy_something)  # 16:00 准时开抢
-    schedule.every().day.at('18:00').do(buy_something)  # 18:00 准时开抢
-
-    while True:
-        schedule.run_pending()
-
-    print('===================关闭定时任务===================')
+    buy_something()
+    # print('===================开启定时任务===================')
+    #
+    # print('\n任务计划 === >')
+    # print("\
+    #          11: 30 准时开抢 \n \
+    #         14: 00 准时开抢 \n \
+    #         16: 00 准时开抢 \n \
+    #         18: 00 准时开抢")
+    #
+    # # schedule.every().day.at('13:00').do(buy_something)  # 11:30 准时开抢
+    # # schedule.every().day.at('11:30').do(buy_something)  # 11:30 准时开抢
+    # schedule.every().day.at('14:00').do(buy_something)  # 14:00 准时开抢
+    # # schedule.every().day.at('16:00').do(buy_something)  # 16:00 准时开抢
+    # # schedule.every().day.at('18:00').do(buy_something)  # 18:00 准时开抢
+    #
+    # while True:
+    #     schedule.run_pending()
+    #
+    # print('===================关闭定时任务===================')
