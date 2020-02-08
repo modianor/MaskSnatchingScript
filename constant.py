@@ -13,9 +13,9 @@ PARAMS_MASK = {
 
 
 PARAMS_AQ_Steril = {
-    'author': '王猪猪',
-    'tel': '18100695026',
-    'address': '江苏省南通市港闸区陈桥街道丽阳花园8号楼',
+    'author': '',
+    'tel': '',
+    'address': '',
     'num': '1',
     'fid': '1888',
     'group_id': '0',
