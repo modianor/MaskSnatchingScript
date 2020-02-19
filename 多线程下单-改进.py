@@ -4,11 +4,12 @@ import os
 import random
 import threading  # Python主要通过标准库中的threading包来实现多线程
 import time
-from typing import Dict, List
+from typing import Dict
 
 import requests
 
 from constant import PARAMS_MASK
+from utils import find_path
 
 
 def doChore():  # 作为间隔  每次调用间隔0.5s
@@ -32,7 +33,7 @@ header = {
     'Host': 'xcxb.aiyichuan.com',
     'Connection': 'keep-alive',
     'accept': 'application/json',
-    'cookie': 'session_key=cf3ae4384b395557997080997d4070e9;version=2;fenxiaoid=72458;beta=0;lat=34.00545;lng=119.38945;',
+    'cookie': 'session_key=da24f430a4ac6e25d38f19604e9f3b2c;version=2;fenxiaoid=72458;beta=0;lat=34.00545;lng=119.38945;',
     'charset': 'utf-8',
     'content-type': 'application/x-www-form-urlencoded',
     'Content-Length': '0',
@@ -49,7 +50,7 @@ url = 'https://xcxb.aiyichuan.com/wxapp/v1.Act/index?scene=1089'
 act_info_url = 'https://xcxb.aiyichuan.com/wxapp/v1.Act/act_info'  # GET
 order_url = 'https://xcxb.aiyichuan.com/wxapp/v1.Act/add_order'  # POST
 
-shop_id, mask_id, mask_name = 653, 0, ''
+shop_id, mask_id, mask_name, flag = -1, -1, '', False
 
 session = requests.session()
 
@@ -69,10 +70,10 @@ def booth(tid):
                 i = i - 1
                 data = data['data']
                 order_id = data['order_id']
-                print('您已成功下单，订单号：{}，请尽快付款，5分钟内完成交易'.format(order_id))
+                print('code: {}, 您已成功下单，订单号：{}，请尽快付款，5分钟内完成交易'.format(code, order_id))
                 time.sleep(10)  # 此处必须休眠10秒，否则下单失败
 
-            print(msg)
+            print('code: {}, msg: {}'.format(code, msg))
         else:
             print('完成抢单')
             os._exit(0)  # 退出程序
@@ -82,48 +83,61 @@ def booth(tid):
     # Start of the main function
 
 
-def buy_something():
-    global shop_id, mask_id, mask_name, url, act_info_url
+def get_mask_info() -> bool:
+    global shop_id, mask_id, mask_name, url, act_info_url, flag
+
     response = session.get(url=url, headers=header)
 
     data: Dict = response.json()
 
-    data = data['data']
+    print(data)
 
-    user_data = data['userinfo']
+    man = find_path(data)
+    user_data = data['data']['userinfo']
 
-    data: List = data['forech_template']
+    print(user_data)
+    mask_paths = man.in_value_path('口罩')
+    mask_path = mask_paths[0][:-len('[link_name]') - 2] # 南通市区
+    # mask_path = mask_paths[1][:-len('[link_name]') - 2] # 南通通州
+    # mask_path = mask_paths[2][:-len('[link_name]') - 2] # 南通海门
+    shiqu_mask = eval('data' + mask_path)
+    mask_id = shiqu_mask['params']['id']
+    mask_name = shiqu_mask['link_name']  # default value
 
-    mask_data = data[1]
-
-    mask_list_data = mask_data['ad_list'][0]['new_link']
-
-    shop_id = 653  # 653 the shop id is default value --  653
-    mask_id = mask_list_data['params']['id']
-    mask_name = mask_list_data['link_name']  # default value
-
-    print('shop id: {}, mask id: {}, mask name: {}'.format(shop_id, mask_id, str(mask_name)))
-
-    if '一次性防护口罩5只装' in mask_name:
+    if '口罩' in mask_name:
         act_info_url = act_info_url + '?fid=' + str(mask_id) + '&share_uid=&coupon_uid='
         response = session.get(url=act_info_url, headers=header)
         data = response.json()
         for i, shop in enumerate(data['data']['get_all_price']['attr']):
-            print('{}, 库存：{}, 显示库存：{}, 价格：{}, 限购：{}'.format(shop['name'], shop['kucun'], shop['show_kucun'],
-                                                            shop['show_price'], shop['xiangou_num']))
-            if '唐闸' in shop['name']:
+            print('id：{}, {}, 库存：{}, 价格：{}, 限购：{}'.format(shop['id'], shop['name'], shop['kucun'],
+                                                          shop['show_price'], shop['xiangou_num']))
+            if '唐闸' in shop['name']: # 这里注意修改 就是你线下要去领取的药店的名称 部分名称和完整名称都可以 主要是用来判断获取shop_id
                 shop_id = shop['id']
+                PARAMS_MASK['goods_attr_id'] = shop_id
+                PARAMS_MASK['fid'] = mask_id
+                flag = True
+    print('shop id: {}, mask id: {}, mask name: {}'.format(shop_id, mask_id, str(mask_name)))
+    return flag
 
-                # 总共设置了10个线程
-                for k in range(5):
-                    new_thread = threading.Thread(target=booth, args=(k,))  # 创建线程; Python使用threading.Thread对象来代表线程
-                    new_thread.start()  # 调用start()方法启动线程
+
+def buy_something():
+    flag: bool = get_mask_info()
+    while (not flag):
+        flag = get_mask_info()
+
+    print(PARAMS_MASK)
+    # 如果你已经提前知道这两个属性的信息 那么你可以将上面的代码注释掉 并且反注释下面的两行代码 能够加快速度
+    # PARAMS_MASK['goods_attr_id'] = 883
+    # PARAMS_MASK['fid'] = 1950
+    for k in range(5):
+        new_thread = threading.Thread(target=booth, args=(k,))  # 创建线程; Python使用threading.Thread对象来代表线程
+        new_thread.start()  # 调用start()方法启动线程
 
 
 if __name__ == '__main__':
     buy_something()
-    # print('===================开启定时任务===================')
-    #
+    # # print('===================开启定时任务===================')
+    # #
     # print('\n任务计划 === >')
     # print("\
     #          11: 30 准时开抢 \n \
@@ -132,9 +146,9 @@ if __name__ == '__main__':
     #         18: 00 准时开抢")
     #
     # # schedule.every().day.at('13:00').do(buy_something)  # 11:30 准时开抢
-    # # schedule.every().day.at('11:30').do(buy_something)  # 11:30 准时开抢
-    # schedule.every().day.at('14:00').do(buy_something)  # 14:00 准时开抢
-    # # schedule.every().day.at('16:00').do(buy_something)  # 16:00 准时开抢
+    # schedule.every().day.at('11:30').do(buy_something)  # 11:30 准时开抢
+    # # schedule.every().day.at('14:00').do(buy_something)  # 14:00 准时开抢
+    # # schedule.every().day.at('15:59').do(buy_something)  # 16:00 准时开抢
     # # schedule.every().day.at('18:00').do(buy_something)  # 18:00 准时开抢
     #
     # while True:
